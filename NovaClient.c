@@ -68,18 +68,22 @@ static void bin2hex(const char *vp, size_t n)
 static char *trim_opt(char *opt)
 {
     char *end;
-    if (opt == 0) {
+    if (opt == 0)
+    {
         return 0;
     }
-    
-    while (isspace((int)*opt) || *opt == '=') opt++;
 
-    if (*opt == 0) {
+    while (isspace((int)*opt) || *opt == '=')
+        opt++;
+
+    if (*opt == 0)
+    {
         return opt;
     }
 
     end = opt + strlen(opt) - 1;
-    while(end > opt && isspace((int)*end)) end--;
+    while (end > opt && isspace((int)*end))
+        end--;
 
     *(end + 1) = 0;
 
@@ -183,6 +187,10 @@ static void nova_invoke()
         error("ERROR opening socket");
     }
 
+    if (globalArgs.debug) {
+        puts("connecting...");
+    }
+
     if (connect(sockfd, (struct sockaddr *)&sin, sizeof(struct sockaddr_in)) < 0)
     {
         error("ERROR connecting");
@@ -190,6 +198,7 @@ static void nova_invoke()
 
     if (globalArgs.debug)
     {
+        puts("sending...");
         DUMP_MEM(nova_buf, nova_pkt_len);
     }
 
@@ -262,13 +271,55 @@ static void nova_invoke()
         exit(1);
     }
 
-    printf("%s", resp_json);
+    // print json attach
+    {
+        nova_hdr->attach[nova_hdr->attach_len] = 0;
+        if (strcmp(nova_hdr->attach, "{}") != 0)
+        {
+            cJSON *root = cJSON_Parse(nova_hdr->attach);
+            if (root)
+            {
+                printf("Nova Attachment: %s\n", cJSON_PrintUnformatted(root));
+                cJSON_Delete(root);
+            }
+        }
+    }
 
+    // print json resp
+    {
+        cJSON *resp;
+        cJSON *root = cJSON_Parse(resp_json);
+        if (root == NULL || !cJSON_IsObject(root))
+        {
+            fprintf(stderr, "\x1B[1;31m"
+                            "Invalid JSON Response"
+                            "\x1B[0m\n");
+            printf("%s", resp_json);
+            goto fail;
+        }
+        else if ((resp = cJSON_GetObjectItem(root, "error_response")))
+        {
+            printf("\x1B[1;31m%s\x1B[0m\n", cJSON_Print(resp));
+        }
+        else if ((resp = cJSON_GetObjectItem(root, "response")))
+        {
+            printf("\x1B[1;32m%s\x1B[0m\n", cJSON_Print(resp));
+        }
+        else
+        {
+            printf("%s\n", cJSON_Print(root));
+        }
+
+        cJSON_Delete(root);
+    }
+
+fail:
     deleteNovaHeader(nova_hdr);
     close(sockfd);
     free(nova_buf);
     free(thrift_buf);
     free(recv_buf);
+    exit(1);
 }
 
 int main(int argc, char **argv)
@@ -409,7 +460,7 @@ int main(int argc, char **argv)
                 globalArgs.service,
                 globalArgs.method);
 
-        fprintf(stderr, "args=%s&attach=%s\n\n",
+        fprintf(stderr, "args=%s&attach=%s\n",
                 globalArgs.args,
                 globalArgs.attach);
     }
