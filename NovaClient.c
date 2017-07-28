@@ -68,7 +68,10 @@ static void bin2hex(const char *vp, size_t n)
 static char *trim_opt(char *opt)
 {
     char *end;
-
+    if (opt == 0) {
+        return 0;
+    }
+    
     while (isspace((int)*opt) || *opt == '=') opt++;
 
     if (*opt == 0) {
