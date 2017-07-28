@@ -165,6 +165,11 @@ static void nova_invoke()
         error("ERROR connecting");
     }
 
+    if (globalArgs.debug)
+    {
+        DUMP_MEM(nova_buf, nova_pkt_len);
+    }
+
     setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (const char *)&globalArgs.timeout, sizeof(struct timeval));
     tmp_buf = nova_buf;
     while (nova_pkt_len > 0)
@@ -208,6 +213,11 @@ static void nova_invoke()
         recv_left -= recv_n;
     }
 
+    if (globalArgs.debug)
+    {
+        DUMP_MEM(recv_buf, recv_msg_size);
+    }
+
     if (!swNova_IsNovaPack(recv_buf, recv_msg_size))
     {
         DUMP_MEM(recv_buf, recv_msg_size);
@@ -229,7 +239,7 @@ static void nova_invoke()
         exit(1);
     }
 
-    printf("%s\n", resp_json);
+    printf("%s", resp_json);
 
     deleteNovaHeader(nova_hdr);
     close(sockfd);
@@ -368,14 +378,18 @@ int main(int argc, char **argv)
         }
     }
 
-    fprintf(stderr, "invoking nova://%s:%d/%s.%s\n",
-            globalArgs.host,
-            globalArgs.port,
-            globalArgs.service,
-            globalArgs.method);
-    fprintf(stderr, "args=%s&attach=%s\n\n",
-            globalArgs.args,
-            globalArgs.attach);
+    if (globalArgs.debug)
+    {
+        fprintf(stderr, "invoking nova://%s:%d/%s.%s\n",
+                globalArgs.host,
+                globalArgs.port,
+                globalArgs.service,
+                globalArgs.method);
+
+        fprintf(stderr, "args=%s&attach=%s\n\n",
+                globalArgs.args,
+                globalArgs.attach);
+    }
 
     nova_invoke();
 
