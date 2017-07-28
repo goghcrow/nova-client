@@ -7,6 +7,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <errno.h>
+#include <ctype.h>
 
 #include "cJSON.h"
 #include "thriftgeneric.h"
@@ -61,6 +62,25 @@ static void bin2hex(const char *vp, size_t n)
         printf("%02x", (unsigned char)vp[i]);
     }
     putchar('\n');
+}
+
+// remove prefix = sapce and remove suffix space
+static char *trim_opt(char *opt)
+{
+    char *end;
+
+    while (isspace((int)*opt) || *opt == '=') opt++;
+
+    if (*opt == 0) {
+        return opt;
+    }
+
+    end = opt + strlen(opt) - 1;
+    while(end > opt && isspace((int)*end)) end--;
+
+    *(end + 1) = 0;
+
+    return opt;
 }
 
 static void nova_invoke()
@@ -263,6 +283,7 @@ int main(int argc, char **argv)
     globalArgs.timeout.tv_usec = 0;
 
     opt = getopt(argc, argv, optString);
+    optarg = trim_opt(optarg);
     while (opt != -1)
     {
         switch (opt)
@@ -274,8 +295,6 @@ int main(int argc, char **argv)
             globalArgs.port = atoi(optarg);
             break;
         case 'm':
-            globalArgs.service = optarg;
-
             ret = strrchr(optarg, '.');
             if (ret == NULL)
             {
@@ -310,6 +329,7 @@ int main(int argc, char **argv)
             break;
         }
         opt = getopt(argc, argv, optString);
+        optarg = trim_opt(optarg);
     }
 
     if (globalArgs.host == NULL)
