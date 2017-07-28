@@ -6,13 +6,17 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <errno.h>
 
 #include "cJSON.h"
 #include "thriftgeneric.h"
 #include "nova.h"
+#include "binarydata.h"
+
+#define RECV_BUF_SIZE 8192
 
 static const char *usage =
-    "\nUsage: nova -h<HOST> -p<PORT> -m<METHOD> -a<JSON_ARGUMENTS> [-e<JSON_ATTACHMENT>]\n"
+    "\nUsage: nova -h<HOST> -p<PORT> -m<METHOD> -a<JSON_ARGUMENTS> [-e<JSON_ATTACHMENT='{}'> -t<TIMEOUT_SEC=5>]\n"
     "   nova -h127.0.0.1 -p8050 -m=com.youzan.material.general.service.TokenService.getToken -a='{\"xxxId\":1,\"scope\":\"\"}'\n"
     "   nova -h127.0.0.1 -p8050 -m=com.youzan.material.general.service.TokenService.getToken -a='{\"xxxId\":1,\"scope\":\"\"}' -e='{\"xxxId\":1}'\n"
     "   nova -h127.0.0.1 -p8050 -m=com.youzan.material.general.service.MediaService.getMediaList -a='{\"query\":{\"categoryId\":2,\"xxxId\":1,\"pageNo\":1,\"pageSize\":5}}'\n"
@@ -20,15 +24,17 @@ static const char *usage =
 
 struct globalArgs_t
 {
+    int debug;
     const char *host;
     int port;
     const char *service;
     const char *method;
     const char *args;   /* JSON */
     const char *attach; /* JSON */
+    struct timeval timeout;
 } globalArgs;
 
-static const char *optString = "h:p:m:a:e:?";
+static const char *optString = "h:p:m:a:e:t:?!";
 
 #define INVALID_OPT(reason, ...)                                     \
     fprintf(stderr, "\x1B[1;31m" reason "\x1B[0m\n", ##__VA_ARGS__); \
@@ -65,11 +71,19 @@ static void nova_invoke()
 
     swNova_Header *nova_hdr;
     char *thrift_buf;
+
     char *nova_buf;
+    ssize_t send_n;
     int32_t nova_pkt_len;
+
     char *recv_buf;
-    size_t recv_n;
+    ssize_t recv_msg_size;
+    int recv_n;
+    int recv_left;
+
     char *resp_json;
+
+    char *tmp_buf;
 
     int buf_len = thrift_generic_pack(0,
                                       globalArgs.service, strlen(globalArgs.service),
@@ -150,32 +164,70 @@ static void nova_invoke()
         error("ERROR connecting");
     }
 
-    // DUMP_MEM(nova_buf, nova_pkt_len);
-    send(sockfd, nova_buf, nova_pkt_len, 0);
-
-    recv_buf = (char *)malloc(8192);
-    recv_n = recv(sockfd, recv_buf, 8192, 0);
-
-    if (!swNova_IsNovaPack(recv_buf, recv_n))
+    setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (const char *)&globalArgs.timeout, sizeof(struct timeval));
+    tmp_buf = nova_buf;
+    while (nova_pkt_len > 0)
     {
-        DUMP_MEM(recv_buf, recv_n);
+        send_n = send(sockfd, tmp_buf, nova_pkt_len, 0);
+        if (send_n < 0)
+        {
+            if (errno == EINTR)
+            {
+                continue;
+            }
+            error("ERROR sending");
+        }
+        tmp_buf += send_n;
+        nova_pkt_len -= send_n;
+    }
+
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&globalArgs.timeout, sizeof(struct timeval));
+    recv_buf = (char *)malloc(RECV_BUF_SIZE);
+    tmp_buf = recv_buf;
+    recv_n = recv(sockfd, tmp_buf, RECV_BUF_SIZE, 0);
+    if (recv_n < 4)
+    {
+        error("ERROR receiving");
+    }
+    swReadI32((const uchar *)tmp_buf, (int32_t *)&recv_msg_size);
+    recv_left = recv_msg_size - recv_n;
+    tmp_buf += recv_n;
+    while (recv_left > 0)
+    {
+        recv_n = recv(sockfd, tmp_buf, RECV_BUF_SIZE, 0);
+        if (recv_n < 0)
+        {
+            if (errno == EINTR)
+            {
+                continue;
+            }
+            error("ERROR receiving");
+        }
+        tmp_buf += recv_n;
+        recv_left -= recv_n;
+    }
+
+    if (!swNova_IsNovaPack(recv_buf, recv_msg_size))
+    {
+        DUMP_MEM(recv_buf, recv_msg_size);
         fprintf(stderr, "ERROR, invalid nova packet\n");
         exit(1);
     }
-    if (!swNova_unpack(recv_buf, recv_n, nova_hdr))
+    if (!swNova_unpack(recv_buf, recv_msg_size, nova_hdr))
     {
         deleteNovaHeader(nova_hdr);
-        DUMP_MEM(recv_buf, recv_n);
+        DUMP_MEM(recv_buf, recv_msg_size);
         fprintf(stderr, "ERROR, fail to unpcak nova packet header\n");
         exit(1);
     }
 
     if (!thrift_generic_unpack(recv_buf + nova_hdr->head_size, nova_hdr->msg_size - nova_hdr->head_size, &resp_json))
     {
-        DUMP_MEM(recv_buf, recv_n);
+        DUMP_MEM(recv_buf, recv_msg_size);
         fprintf(stderr, "ERROR, fail to unpack thrift packet\n");
         exit(1);
     }
+
     printf("%s\n", resp_json);
 
     deleteNovaHeader(nova_hdr);
@@ -195,6 +247,9 @@ int main(int argc, char **argv)
 
     // 默认attach
     globalArgs.attach = "{}";
+    globalArgs.debug = 0;
+    globalArgs.timeout.tv_sec = 5;
+    globalArgs.timeout.tv_usec = 0;
 
     opt = getopt(argc, argv, optString);
     while (opt != -1)
@@ -231,8 +286,14 @@ int main(int argc, char **argv)
         case 'e':
             globalArgs.attach = optarg;
             break;
+        case 't':
+            globalArgs.timeout.tv_sec = atoi(optarg) > 0 ? atoi(optarg) : 5;
+            break;
         case '?':
             display_usage();
+            break;
+        case '!':
+            globalArgs.debug = 1;
             break;
         default:
             break;
@@ -288,7 +349,6 @@ int main(int argc, char **argv)
 
                 cur = cur->next;
             }
-
 
             globalArgs.args = cJSON_PrintUnformatted(root);
         }
