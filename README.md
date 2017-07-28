@@ -1,5 +1,11 @@
 # nova client
 
+
+```
+make
+./nova -?
+```
+
 ```
 Usage: nova -h<HOST> -p<PORT> -m<METHOD> -a<JSON_ARGUMENTS> [-e<JSON_ATTACHMENT='{}'> -t<TIMEOUT_SEC=5>]
    
