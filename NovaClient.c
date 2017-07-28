@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <stddef.h>
-#include <strings.h>
+#include <string.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -55,7 +55,8 @@ static void error(char *msg)
 #define DUMP_MEM(vp, n) bin2hex((const char *)(vp), (size_t)(n))
 static void bin2hex(const char *vp, size_t n)
 {
-    for (size_t i = 0; i < n; i++)
+    size_t i;
+    for (i = 0; i < n; i++)
     {
         printf("%02x", (unsigned char)vp[i]);
     }
