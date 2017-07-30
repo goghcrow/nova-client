@@ -258,13 +258,13 @@ static void nova_invoke()
     swReadI32((const uchar *)recv_buf, (int32_t *)&recv_msg_size);
     if (recv_msg_size <= 0)
     {
-        fprintf(stderr, "ERROR: Invalid nova packet size %zd", recv_msg_size);
+        fprintf(stderr, "ERROR: Invalid nova packet size %zd\n", recv_msg_size);
         printbin(recv_buf, 300);
         exit(1);
     }
     if (recv_msg_size > RECV_BUF_SIZE)
     {
-        fprintf(stderr, "ERROR: too large nova packet size %zd", recv_msg_size);
+        fprintf(stderr, "ERROR: too large nova packet size %zd\n", recv_msg_size);
         printbin(recv_buf, 300);
         exit(1);
     }
