@@ -52,6 +52,21 @@ static void error(char *msg)
     exit(0);
 }
 
+static void printbin(const char *bin, int size)
+{
+    char c = '*';
+    int count = 100;
+    int i;
+    for (i = 0; i < count; i++)
+        putchar(c);
+    puts("");
+    fwrite(bin, sizeof(char), size, stdout);
+    puts("");
+    for (i = 0; i < count; i++)
+        putchar(c);
+    puts("");
+}
+
 #define DUMP_STRUCT(sp) bin2hex((const char *)(sp), sizeof(*(sp)))
 #define DUMP_MEM(vp, n) bin2hex((const char *)(vp), (size_t)(n))
 static void bin2hex(const char *vp, size_t n)
@@ -187,7 +202,8 @@ static void nova_invoke()
         error("ERROR opening socket");
     }
 
-    if (globalArgs.debug) {
+    if (globalArgs.debug)
+    {
         puts("connecting...");
     }
 
@@ -248,26 +264,27 @@ static void nova_invoke()
     if (globalArgs.debug)
     {
         DUMP_MEM(recv_buf, recv_msg_size);
+        printbin(recv_buf, recv_msg_size);
     }
 
     if (!swNova_IsNovaPack(recv_buf, recv_msg_size))
     {
-        DUMP_MEM(recv_buf, recv_msg_size);
         fprintf(stderr, "ERROR, invalid nova packet\n");
+        printbin(recv_buf, recv_msg_size);
         exit(1);
     }
     if (!swNova_unpack(recv_buf, recv_msg_size, nova_hdr))
     {
         deleteNovaHeader(nova_hdr);
-        DUMP_MEM(recv_buf, recv_msg_size);
         fprintf(stderr, "ERROR, fail to unpcak nova packet header\n");
+        printbin(recv_buf, recv_msg_size);
         exit(1);
     }
 
     if (!thrift_generic_unpack(recv_buf + nova_hdr->head_size, nova_hdr->msg_size - nova_hdr->head_size, &resp_json))
     {
-        DUMP_MEM(recv_buf, recv_msg_size);
         fprintf(stderr, "ERROR, fail to unpack thrift packet\n");
+        printbin(recv_buf, recv_msg_size);
         exit(1);
     }
 

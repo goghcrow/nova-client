@@ -11,9 +11,9 @@
 #define C_BUF_OFS (const uchar *)buf + off
 
 int thrift_generic_pack(int seq,
-         const char *serv, int serv_len,
-         const char *method, int method_len,
-         const char *json_args, int args_len, char **out_buf)
+                        const char *serv, int serv_len,
+                        const char *method, int method_len,
+                        const char *json_args, int args_len, char **out_buf)
 {
     int off = 0;
     char *buf = malloc(GENERIC_COMMON_LEN + serv_len + method_len + args_len);
@@ -128,7 +128,11 @@ int thrift_generic_unpack(const char *buf, int buf_len, char **out_json_resp)
         ver1 = 0 - ((ver1 - 1) ^ 0xffffffff);
     }
     ver1 = ver1 & VER_MASK;
-    assert(ver1 == VER1);
+    if (ver1 != VER1)
+    {
+        fprintf(stderr, "unexpected thrift protocol version\n");
+        return 0;
+    }
 
     type = ver1 & 0x000000ff;
     if (type == T_EX)
@@ -146,7 +150,11 @@ int thrift_generic_unpack(const char *buf, int buf_len, char **out_json_resp)
         return 0;
     }
     off += tmp_len;
-    assert(strncmp(tmp_str, GENERIC_METHOD, GENERIC_COMMON_LEN) == 0);
+    if (strncmp(tmp_str, GENERIC_METHOD, GENERIC_COMMON_LEN) != 0)
+    {
+        fprintf(stderr, "unexpected generic method name:%.*s\n", GENERIC_COMMON_LEN, tmp_str);
+        return 0;
+    }
     free(tmp_str);
 
     swReadU32(C_BUF_OFS, &seq);
@@ -154,7 +162,10 @@ int thrift_generic_unpack(const char *buf, int buf_len, char **out_json_resp)
 
     swReadByte(C_BUF_OFS, (char *)&field_type);
     off += 1;
-    assert(field_type == TYPE_STRING);
+    if(field_type != TYPE_STRING) {
+        fprintf(stderr, "unexpected generic idl format: expected TYPE_STRING but got %c\n", field_type);
+        return 0;
+    }
 
     swReadU16(C_BUF_OFS, &field_id);
     off += 2;
