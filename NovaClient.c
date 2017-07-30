@@ -49,7 +49,7 @@ static void display_usage()
 static void error(char *msg)
 {
     perror(msg);
-    exit(0);
+    exit(1);
 }
 
 static void printbin(const char *bin, int size)
@@ -105,13 +105,51 @@ static char *trim_opt(char *opt)
     return opt;
 }
 
-static void nova_invoke()
+static int socket_connect(const char *host, int port)
 {
     int sockfd;
     struct sockaddr_in sin = {0};
-    struct in_addr tmp;
     struct hostent *host_entry;
+    struct in_addr addr;
 
+    sin.sin_family = AF_INET;
+    sin.sin_port = htons((unsigned short int)port);
+
+    if (inet_aton(host, &addr))
+    {
+        sin.sin_addr.s_addr = addr.s_addr;
+    }
+    else
+    {
+        host_entry = gethostbyname(host);
+        if (!host_entry)
+        {
+            fprintf(stderr, "ERROR, no such host as %s\n", host);
+            exit(1);
+        }
+        memcpy(&(sin.sin_addr.s_addr), host_entry->h_addr_list[0], host_entry->h_length);
+    }
+
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0)
+    {
+        perror("ERROR opening socket");
+        exit(1);
+    }
+
+    if (connect(sockfd, (struct sockaddr *)&sin, sizeof(struct sockaddr_in)) < 0)
+    {
+        perror("ERROR connecting");
+        exit(1);
+    }
+
+    return sockfd;
+}
+
+static void nova_invoke()
+{
+    int sockfd;
+    
     swNova_Header *nova_hdr;
     char *thrift_buf;
 
@@ -181,36 +219,7 @@ static void nova_invoke()
         exit(1);
     }
 
-    sin.sin_family = AF_INET;
-    sin.sin_port = htons((unsigned short int)globalArgs.port);
-    if (inet_aton(globalArgs.host, &tmp))
-    {
-        sin.sin_addr.s_addr = tmp.s_addr;
-    }
-    else
-    {
-        if (!(host_entry = gethostbyname(globalArgs.host)))
-        {
-            fprintf(stderr, "ERROR, no such host as %s\n", globalArgs.host);
-        }
-        memcpy(&(sin.sin_addr.s_addr), host_entry->h_addr_list[0], host_entry->h_length);
-    }
-
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0)
-    {
-        error("ERROR opening socket");
-    }
-
-    if (globalArgs.debug)
-    {
-        puts("connecting...");
-    }
-
-    if (connect(sockfd, (struct sockaddr *)&sin, sizeof(struct sockaddr_in)) < 0)
-    {
-        error("ERROR connecting");
-    }
+    sockfd = socket_connect(globalArgs.host, globalArgs.port);
 
     if (globalArgs.debug)
     {
@@ -238,12 +247,26 @@ static void nova_invoke()
     setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&globalArgs.timeout, sizeof(struct timeval));
     recv_buf = (char *)malloc(RECV_BUF_SIZE);
     tmp_buf = recv_buf;
-    recv_n = recv(sockfd, tmp_buf, RECV_BUF_SIZE, 0);
+
+    recv_n = recv(sockfd, recv_buf, RECV_BUF_SIZE, 0);
     if (recv_n < 4)
     {
         error("ERROR receiving");
     }
+    
+    recv_msg_size = 0; /* !!!!! */
     swReadI32((const uchar *)tmp_buf, (int32_t *)&recv_msg_size);
+    if (recv_msg_size <= 0)
+    {
+        fprintf(stderr, "ERROR: Invalid nova packet size %zd", recv_msg_size);
+        exit(1);
+    }
+    if (recv_msg_size > RECV_BUF_SIZE)
+    {
+        fprintf(stderr, "ERROR: too large nova packet size %zd", recv_msg_size);
+        exit(1);
+    }
+
     recv_left = recv_msg_size - recv_n;
     tmp_buf += recv_n;
     while (recv_left > 0)
