@@ -2,6 +2,7 @@
 
 
 ```
+sudo yum install -y gcc
 make
 ./nova -?
 ```
