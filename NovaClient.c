@@ -17,7 +17,11 @@
 #define RECV_BUF_SIZE 8192
 
 static const char *usage =
-    "\nUsage: nova -h<HOST> -p<PORT> -m<METHOD> -a<JSON_ARGUMENTS> [-e<JSON_ATTACHMENT='{}'> -t<TIMEOUT_SEC=5>]\n"
+    "\nUsage:\n"
+    "   nova -h<HOST> -p<PORT> -m<METHOD> -a<JSON_ARGUMENTS> [-e<JSON_ATTACHMENT='{}'> -t<TIMEOUT_SEC=5>]\n"
+    "   nova -h<HOST> -p<PORT> -s [-t<TIMEOUT_SEC=5>]\n\n"
+    "Example:\n"
+    "   nova -h127.0.0.1 -p8050 -s\n"
     "   nova -h127.0.0.1 -p8050 -m=com.youzan.material.general.service.TokenService.getToken -a='{\"xxxId\":1,\"scope\":\"\"}'\n"
     "   nova -h127.0.0.1 -p8050 -m=com.youzan.material.general.service.TokenService.getToken -a='{\"xxxId\":1,\"scope\":\"\"}' -e='{\"xxxId\":1}'\n"
     "   nova -h127.0.0.1 -p8050 -m=com.youzan.material.general.service.MediaService.getMediaList -a='{\"query\":{\"categoryId\":2,\"xxxId\":1,\"pageNo\":1,\"pageSize\":5}}'\n"
@@ -35,7 +39,7 @@ struct globalArgs_t
     struct timeval timeout;
 } globalArgs;
 
-static const char *optString = "h:p:m:a:e:t:?!";
+static const char *optString = "h:p:m:a:e:t:?s!";
 
 #define INVALID_OPT(reason, ...)                                     \
     fprintf(stderr, "\x1B[1;31m" reason "\x1B[0m\n", ##__VA_ARGS__); \
@@ -149,7 +153,7 @@ static int socket_connect(const char *host, int port)
 static void nova_invoke()
 {
     int sockfd;
-    
+
     swNova_Header *nova_hdr;
     char *thrift_buf;
 
@@ -253,7 +257,7 @@ static void nova_invoke()
     {
         error("ERROR receiving");
     }
-    
+
     recv_msg_size = 0; /* !!!!! */
     swReadI32((const uchar *)recv_buf, (int32_t *)&recv_msg_size);
     if (recv_msg_size <= 0)
@@ -372,7 +376,6 @@ int main(int argc, char **argv)
     size_t method_len = 0;
     size_t service_len = 0;
 
-    // 默认attach
     globalArgs.attach = "{}";
     globalArgs.debug = 0;
     globalArgs.timeout.tv_sec = 5;
@@ -384,6 +387,15 @@ int main(int argc, char **argv)
     {
         switch (opt)
         {
+        case 's':
+            if (globalArgs.host == NULL)
+            {
+                globalArgs.host = "127.0.0.1";
+            }
+            globalArgs.service = "com.youzan.service.test";
+            globalArgs.method = "stats";
+            globalArgs.args = "{}";
+            break;
         case 'h':
             globalArgs.host = optarg;
             break;
@@ -440,28 +452,28 @@ int main(int argc, char **argv)
 
     if (globalArgs.service == NULL)
     {
-        INVALID_OPT("Missing Service");
+        INVALID_OPT("Missing Service -m=${service}.${method}");
     }
 
     if (globalArgs.method == NULL)
     {
-        INVALID_OPT("Missing Method");
+        INVALID_OPT("Missing Method -m=${service}.${method}");
     }
 
     if (globalArgs.args == NULL)
     {
-        INVALID_OPT("Missing Arguments");
+        INVALID_OPT("Missing Arguments -a'${jsonargs}'");
     }
     else
     {
         cJSON *root = cJSON_Parse(globalArgs.args);
         if (root == NULL)
         {
-            INVALID_OPT("Invalid Arguments JSON Format as %s", globalArgs.args);
+            INVALID_OPT("Invalid Arguments JSON Format : %s", globalArgs.args);
         }
         else if (!cJSON_IsObject(root))
         {
-            INVALID_OPT("Invalid Arguments JSON Format as %s", globalArgs.args);
+            INVALID_OPT("Invalid Arguments JSON Format : %s", globalArgs.args);
         }
         else
         {
@@ -494,18 +506,13 @@ int main(int argc, char **argv)
         }
     }
 
-    if (globalArgs.debug)
-    {
-        fprintf(stderr, "invoking nova://%s:%d/%s.%s\n",
-                globalArgs.host,
-                globalArgs.port,
-                globalArgs.service,
-                globalArgs.method);
-
-        fprintf(stderr, "args=%s&attach=%s\n",
-                globalArgs.args,
-                globalArgs.attach);
-    }
+    fprintf(stderr, "invoking nova://%s:%d/%s.%s?args=%s&attach=%s\n",
+            globalArgs.host,
+            globalArgs.port,
+            globalArgs.service,
+            globalArgs.method,
+            globalArgs.args,
+            globalArgs.attach);
 
     nova_invoke();
 
