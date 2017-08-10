@@ -19,7 +19,7 @@
 static const char *usage =
     "\nUsage:\n"
     "   nova -h<HOST> -p<PORT> -m<METHOD> -a<JSON_ARGUMENTS> [-e<JSON_ATTACHMENT='{}'> -t<TIMEOUT_SEC=5>]\n"
-    "   nova -h<HOST> -p<PORT> -s [-t<TIMEOUT_SEC=5>]\n\n"
+    "   nova -h<HOST> -p<PORT> -s [-t<TIMEOUT_SEC=5>] doc: https://github.com/youzan/zan/issues/18 \n\n"
     "Example:\n"
     "   nova -h127.0.0.1 -p8050 -s\n"
     "   nova -h127.0.0.1 -p8050 -m=com.youzan.material.general.service.TokenService.getToken -a='{\"xxxId\":1,\"scope\":\"\"}'\n"
